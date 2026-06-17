@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data directories (generated at runtime)
+data/chroma/
+data/uploads/
+
+# OS
+.DS_Store
+
+# AI files
+agents.md
