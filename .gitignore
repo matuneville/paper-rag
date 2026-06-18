@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.vscode/
 
 # Data directories (generated at runtime)
 data/chroma/
