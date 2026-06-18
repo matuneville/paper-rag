@@ -1,4 +1,9 @@
-"""Quick smoke test — verifies config loads and data dirs exist."""
+"""
+Quick smoke test — verifies config loads and data dirs exist.
+
+Usage:
+    ../.venv/bin/python test_phase1.py
+"""
 import os
 from app.config import settings
 
