@@ -58,7 +58,7 @@ class IngestionService:
 
         logger.info("Starting ingestion for '%s' (%s)", paper_title, file_path)
 
-        # 1. Load PDF — one Document per page
+        # 1. Load PDF - one Doc per page
         pages = PyPDFLoader(file_path).load()
         logger.info("Loaded %d pages from '%s'", len(pages), paper_title)
 
@@ -72,7 +72,8 @@ class IngestionService:
             chunk.metadata["source"] = filename
             chunk.metadata["paper_title"] = paper_title
 
-        # 4. Embed + store in ChromaDB
+        # 4. Embed + store in ChromaDB:
+        #    It automatically embeds with Google and writes to disk on the vector db
         self._vectorstore.add_documents(chunks)
         logger.info("Stored %d chunks in ChromaDB for '%s'", len(chunks), paper_title)
 
