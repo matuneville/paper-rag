@@ -8,6 +8,10 @@ venv/
 # Data directories (generated at runtime)
 data/chroma/
 data/uploads/
+test/data/
+
+# Generated test artifacts
+test/sample.pdf
 
 # OS
 .DS_Store
