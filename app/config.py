@@ -1,4 +1,10 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve the .env file relative to this file's location (project root),
+# so it works regardless of which directory the process is launched from.
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -8,7 +14,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./data/chroma"
     upload_dir: str = "./data/uploads"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
 
 
 # Single instance shared across the app
