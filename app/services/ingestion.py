@@ -1,5 +1,5 @@
 """
-Ingestion pipeline — Phase 2.
+Ingestion pipeline.
 
 Loads a PDF, splits it into chunks, embeds them with Gemini, and stores
 everything in a local ChromaDB collection.
