@@ -31,8 +31,9 @@ async def main() -> None:
         return
 
     pdf_path = sys.argv[1]
-    print(f"\n📄 Ingesting: {pdf_path}")
-    result = await service.ingest_pdf(file_path=pdf_path, paper_title="Test Paper")
+    title = os.path.basename(pdf_path)
+    print(f"\n📄 Ingesting: {pdf_path} as '{title}'")
+    result = await service.ingest_pdf(file_path=pdf_path, paper_title=title)
 
     assert result["pages"] > 0
     assert result["chunks"] > 0
