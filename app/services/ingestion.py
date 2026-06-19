@@ -11,30 +11,22 @@ from datetime import datetime, timezone
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
 
 from app.config import settings
+from app.services.vectorstore import get_vectorstore
 
 logger = logging.getLogger(__name__)
 
 
 class IngestionService:
-    """Handles the full PDF > chunks > embeddings-> ChromaDB vector database pipeline."""
+    """Handles the full PDF > chunks > embeddings > ChromaDB vector database pipeline."""
 
     def __init__(self) -> None:
         self._splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
         )
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=settings.gemini_api_key,
-        )
-        self._vectorstore = Chroma(
-            persist_directory=settings.chroma_persist_dir,
-            embedding_function=embeddings,
-        )
+        self._vectorstore = get_vectorstore()
 
     async def ingest_pdf(self, file_path: str, paper_title: str) -> dict:
         """Load > chunk > embed > store a PDF.

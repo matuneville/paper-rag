@@ -6,50 +6,28 @@ Searches ChromaDB for relevant chunks and uses Gemini to generate a grounded ans
 
 import logging
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_chroma import Chroma
-from langchain_core.prompts import PromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import settings
+from app.prompts import RAG_PROMPT
+from app.services.vectorstore import get_vectorstore
 
 logger = logging.getLogger(__name__)
-
-_PROMPT_TEMPLATE = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""
-        You are a research assistant. Answer the question using ONLY the context provided.
-        If the answer is not in the context, say "I don't have enough information in the uploaded papers to answer this."
-
-        Context:
-        {context}
-
-        Question: {question}
-
-        Answer with citations (mention paper title and page number for each claim):
-        """,
-)
 
 
 class RetrievalService:
     """Searches ChromaDB for relevant chunks and generates a Gemini-powered answer."""
 
     def __init__(self) -> None:
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=settings.gemini_api_key,
-        )
-        self._vectorstore = Chroma(
-            persist_directory=settings.chroma_persist_dir,
-            embedding_function=embeddings,
-        )
+        self._vectorstore = get_vectorstore()
         self._llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-lite",
+            model=settings.llm_model,
             google_api_key=settings.gemini_api_key,
         )
 
 
     async def query_papers(
-        self, question: str, paper_filter: str | None = None, k: int = 4
+        self, question: str, paper_filter: str | None = None, k: int | None = None
     ) -> dict:
         """Search indexed papers and generate a grounded answer.
 
@@ -68,6 +46,7 @@ class RetrievalService:
                     ]
                 }
         """
+        k = k if k is not None else settings.retrieval_k
         logger.info("Querying papers for: %r (filter=%r, k=%d)", question, paper_filter, k)
 
         # 1. Build optional metadata filter
@@ -92,7 +71,7 @@ class RetrievalService:
         )
 
         # 4. Build and invoke the prompt
-        prompt = _PROMPT_TEMPLATE.format(context=context, question=question)
+        prompt = RAG_PROMPT.format(context=context, question=question)
         response = await self._llm.ainvoke(prompt)
         
         answer = self._parse_answer(response.content)
@@ -102,7 +81,7 @@ class RetrievalService:
             {
                 "paper_title": doc.metadata.get("paper_title", "Unknown"),
                 "page": doc.metadata.get("page", None),
-                "excerpt": doc.page_content[:300],
+                "excerpt": doc.page_content[:settings.excerpt_length],
             }
             for doc in found_docs
         ]
@@ -112,15 +91,18 @@ class RetrievalService:
     
     # ----------------- Helper methods -----------------
     @staticmethod
-    def _parse_answer(answer):
+    def _parse_answer(answer) -> str:
         """
-        This method parses the answer to ensure it is a string.
-        In newer SDK versions, content may be either a list of parts rather than a string.
+        Normalise LLM response content to a plain string.
+        In newer SDK versions, content may be a list of parts rather than a string,
+        or None when the response has no text content.
         """
+        if answer is None:
+            return "No text answer."
         if isinstance(answer, list):
             answer = "".join(
-                part.get("text", "") 
-                for part in answer 
+                part.get("text", "")
+                for part in answer
                 if isinstance(part, dict) and "text" in part
             )
         elif isinstance(answer, str) and answer.startswith("[{'type':"):
@@ -130,3 +112,4 @@ class RetrievalService:
                 answer = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p)
             except Exception:
                 pass
+        return answer
