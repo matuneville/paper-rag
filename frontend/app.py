@@ -8,6 +8,7 @@ Requires the FastAPI backend running on http://localhost:8000.
 """
 
 import streamlit as st
+from pathlib import Path
 
 import api_client
 import styles
@@ -34,6 +35,9 @@ if "messages" not in st.session_state:
 
 if "paper_filter" not in st.session_state:
     st.session_state.paper_filter = None
+
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = None  # set on submit, cleared after AI responds
 
 
 # ---------------------------------------------------------------------------
@@ -81,25 +85,34 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     paper_title_input = st.text_input(
-        "Paper title",
-        placeholder="e.g. Attention Is All You Need",
+        "Paper title (optional)",
+        placeholder="Leave blank to use filename",
         label_visibility="collapsed",
     )
 
     if st.button("⬆ Ingest PDF", use_container_width=True):
         if not uploaded_file:
             st.warning("Select a PDF first.")
-        elif not paper_title_input.strip():
-            st.warning("Enter a paper title.")
         else:
+            # Default title = filename without extension
+            filename_stem = Path(uploaded_file.name).stem
+            effective_title = paper_title_input.strip() or filename_stem
+            if not paper_title_input.strip():
+                st.info(f"No title provided — using **{filename_stem}** as title.")
             with st.spinner("Ingesting…"):
                 data, err = api_client.upload_paper(
                     filename=uploaded_file.name,
                     content=uploaded_file.getvalue(),
-                    paper_title=paper_title_input.strip(),
+                    paper_title=effective_title,
                 )
             if err:
-                st.error(err)
+                if "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+                    st.error(
+                        "⏳ LLM API rate limit reached. "
+                        "Please try again later."
+                    )
+                else:
+                    st.error(err)
             else:
                 st.success(
                     f"✓ **{data['paper_title']}**  \n"
@@ -183,9 +196,21 @@ st.markdown(
 # Render message history
 for msg in st.session_state.messages:
     if msg["role"] == "user":
-        st.markdown(f'<div class="user-bubble">{msg["content"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display:flex;align-items:flex-start;justify-content:flex-end;margin:8px 0;">'
+            f'<div class="user-bubble">{msg["content"]}</div>'
+            f'<span style="font-size:1.5rem;margin-left:8px;flex-shrink:0;line-height:1.2;">👤</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        st.markdown(f'<div class="assistant-bubble">{msg["content"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display:flex;align-items:flex-start;margin:8px 0;">'
+            f'<span style="font-size:1.5rem;margin-right:8px;flex-shrink:0;line-height:1.2;">🤖</span>'
+            f'<div class="assistant-bubble">{msg["content"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
         if msg.get("sources"):
             with st.expander(f"📚 Sources ({len(msg['sources'])})"):
                 for src in msg["sources"]:
@@ -199,10 +224,10 @@ for msg in st.session_state.messages:
                     )
 
 # Empty state
-if not st.session_state.messages:
+if not st.session_state.messages and not st.session_state.pending_question:
     st.markdown(
         """
-        <div style="text-align:center; padding: 60px 0; color:#4b5563;">
+        <div style="text-align:center; padding: 60px 0;">
             <div style="font-size:3rem; margin-bottom:12px;">💬</div>
             <div style="font-size:1rem; color:#6b7280;">
                 Upload a PDF in the sidebar, then ask anything about it.
@@ -212,34 +237,25 @@ if not st.session_state.messages:
         unsafe_allow_html=True,
     )
 
-# ── Input ────────────────────────────────────────────────────────────────────
-st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
-col_input, col_send = st.columns([9, 1])
-
-with col_input:
-    question = st.text_input(
-        "question",
-        placeholder="Ask anything about your papers…",
-        label_visibility="collapsed",
-        key="question_input",
+# ── Thinking bubble (renders on the rerun between user submit and AI response) ─
+if st.session_state.pending_question:
+    st.markdown(
+        '<div style="display:flex;align-items:flex-start;margin:8px 0;">'
+        '<span style="font-size:1.5rem;margin-right:8px;flex-shrink:0;line-height:1.2;">🤖</span>'
+        '<div class="assistant-bubble thinking">Thinking…</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
-
-with col_send:
-    send = st.button("➤", use_container_width=True)
-
-if send and question.strip():
-    st.session_state.messages.append({"role": "user", "content": question.strip()})
-
-    with st.spinner("Thinking…"):
-        result, err = api_client.chat(
-            question=question.strip(),
-            paper_filter=st.session_state.paper_filter,
-        )
-
+    result, err = api_client.chat(
+        question=st.session_state.pending_question,
+        paper_filter=st.session_state.paper_filter,
+    )
     if err:
-        st.session_state.messages.append(
-            {"role": "assistant", "content": f"⚠ {err}", "sources": []}
-        )
+        if "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+            content = "⏳ LLM API rate limit reached. Please try again later."
+        else:
+            content = f"⚠ {err}"
+        st.session_state.messages.append({"role": "assistant", "content": content, "sources": []})
     else:
         st.session_state.messages.append(
             {
@@ -248,4 +264,24 @@ if send and question.strip():
                 "sources": result.get("sources", []),
             }
         )
+    st.session_state.pending_question = None
+    st.rerun()
+
+# ── Input form (Enter submits; clear_on_submit wipes the box) ────────────────
+st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+with st.form("chat_form", clear_on_submit=True):
+    col_input, col_send = st.columns([9, 1])
+    with col_input:
+        question = st.text_input(
+            "question",
+            placeholder="Ask anything about your papers…",
+            label_visibility="collapsed",
+        )
+    with col_send:
+        submitted = st.form_submit_button("➤", use_container_width=True)
+
+if submitted and question.strip():
+    q = question.strip()
+    st.session_state.messages.append({"role": "user", "content": q})
+    st.session_state.pending_question = q
     st.rerun()

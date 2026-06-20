@@ -31,7 +31,7 @@ html, body, [class*="css"] {
     color: white;
     padding: 14px 18px;
     border-radius: 18px 18px 4px 18px;
-    margin: 8px 0 8px 15%;
+    max-width: 78%;
     font-size: 0.95rem;
     line-height: 1.5;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
@@ -43,7 +43,7 @@ html, body, [class*="css"] {
     color: #e0e0f0;
     padding: 14px 18px;
     border-radius: 18px 18px 18px 4px;
-    margin: 8px 15% 8px 0;
+    max-width: 78%;
     font-size: 0.95rem;
     line-height: 1.6;
     backdrop-filter: blur(10px);
@@ -124,6 +124,13 @@ html, body, [class*="css"] {
     color: #6b7280;
     margin: 18px 0 8px 0;
 }
+
+/* Thinking animation */
+@keyframes thinking-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+}
+.thinking { animation: thinking-pulse 1.4s ease-in-out infinite; }
 
 /* Hide Streamlit branding */
 #MainMenu { visibility: hidden; }
