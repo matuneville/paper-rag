@@ -5,7 +5,7 @@ All business logic lives in the service layer; routes only handle
 HTTP concerns (validation, file I/O, error mapping).
 """
 
-import os
+import asyncio
 import shutil
 import logging
 from pathlib import Path
@@ -74,14 +74,27 @@ async def upload_paper(
             detail="Only PDF files are accepted.",
         )
 
+    # Reject duplicate paper titles to prevent double-ingestion
+    existing = get_vectorstore()._collection.get(
+        where={"paper_title": paper_title}, include=[]
+    )
+    if existing.get("ids"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{paper_title}' already indexed. Delete it first to re-ingest.",
+        )
+
     # Persist the uploaded file to the uploads directory
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
     dest_path = upload_dir / file.filename
 
+    # Read file content async, then write to disk in a thread pool
+    # (avoids blocking the event loop during large uploads)
     try:
-        with dest_path.open("wb") as f:
-            shutil.copyfileobj(file.file, f)
+        content = await file.read()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, dest_path.write_bytes, content)
     except OSError as exc:
         logger.exception("Failed to save uploaded file")
         raise HTTPException(
@@ -142,7 +155,7 @@ async def list_papers() -> PaperListResponse:
 )
 async def delete_paper(paper_title: str) -> DeleteResponse:
     """
-    Remove all chunks for a givne paper from ChromaDB (by paper_title metadata).
+    Remove all chunks for a given paper from ChromaDB (by paper_title metadata).
     """
     vectorstore = get_vectorstore()
     collection = vectorstore._collection

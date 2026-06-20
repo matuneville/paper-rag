@@ -104,9 +104,12 @@ def test_upload_success():
         "chunks": 20,
         "ingested_at": "2026-01-01T00:00:00+00:00",
     }
+    # Vectorstore returns no existing IDs → paper not yet indexed.
+    # Path.write_bytes mocked so the executor thread-pool write is a no-op.
     with (
+        patch("app.api.routes.get_vectorstore", return_value=_mock_vectorstore(ids=[])),
         patch("app.api.routes._ingestion.ingest_pdf", new=AsyncMock(return_value=fake_stats)),
-        patch("app.api.routes.shutil.copyfileobj"),  # skip real disk write
+        patch("pathlib.Path.write_bytes"),
     ):
         r = client.post(
             "/api/papers/upload",
@@ -118,6 +121,17 @@ def test_upload_success():
     assert data["paper_title"] == "Test Paper"
     assert data["pages"] == 5
     assert data["chunks"] == 20
+
+
+def test_upload_duplicate_rejected():
+    """Uploading a paper_title that already exists → 409 Conflict."""
+    with patch("app.api.routes.get_vectorstore", return_value=_mock_vectorstore(ids=["id1", "id2"])):
+        r = client.post(
+            "/api/papers/upload",
+            files={"file": ("test.pdf", b"%PDF-1.4 fake", "application/pdf")},
+            data={"paper_title": "Existing Paper"},
+        )
+    assert r.status_code == 409
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +213,7 @@ if __name__ == "__main__":
         test_list_papers_with_data,
         test_upload_rejects_non_pdf,
         test_upload_success,
+        test_upload_duplicate_rejected,
         test_delete_paper_not_found,
         test_delete_paper_success,
         test_chat_empty_question_rejected,
