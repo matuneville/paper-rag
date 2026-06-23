@@ -49,7 +49,7 @@ async def health_check() -> HealthResponse:
     """Liveness probe — always returns 200 if the server is up."""
     return HealthResponse(
         status="ok",
-        version="1.0.0"
+        version="1.1.0"
     )
 
 
@@ -65,23 +65,13 @@ async def health_check() -> HealthResponse:
 )
 async def upload_paper(
     file: UploadFile = File(..., description="PDF file to ingest"),
-    paper_title: str = Form(..., min_length=1, description="Human-readable title for this paper"),
+    paper_title: str | None = Form(None, description="Optional human-readable title for this paper"),
 ) -> UploadResponse:
     """Accept a PDF upload, run the ingestion pipeline, and store chunks in ChromaDB."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only PDF files are accepted.",
-        )
-
-    # Reject duplicate paper titles to prevent double-ingestion
-    existing = get_vectorstore()._collection.get(
-        where={"paper_title": paper_title}, include=[]
-    )
-    if existing.get("ids"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"'{paper_title}' already indexed. Delete it first to re-ingest.",
         )
 
     # Persist the uploaded file to the uploads directory
@@ -108,7 +98,12 @@ async def upload_paper(
     try:
         stats = await _ingestion.ingest_pdf(str(dest_path), paper_title)
     except Exception as exc:
-        logger.exception("Ingestion failed for '%s'", paper_title)
+        logger.exception("Ingestion failed")
+        if "already indexed" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ingestion failed: {exc}",
@@ -130,14 +125,35 @@ async def list_papers() -> PaperListResponse:
     results = collection.get(include=["metadatas"])
     metadatas = results.get("metadatas") or []
 
-    # Tally chunks per paper_title
+    # Tally chunks and capture metadata per paper_title
     counts: dict[str, int] = {}
+    paper_meta: dict[str, dict] = {}
+    
     for meta in metadatas:
         title = str(meta.get("paper_title") or "Unknown") if meta else "Unknown"
         counts[title] = counts.get(title, 0) + 1
+        
+        if meta and title not in paper_meta and title != "Unknown":
+            authors_str = str(meta.get("authors", ""))
+            authors = [a.strip() for a in authors_str.split(",")] if authors_str else []
+            year_str = str(meta.get("year", ""))
+            year = int(year_str) if year_str and year_str.isdigit() else None
+            abstract = str(meta.get("abstract", "")) or None
+            
+            paper_meta[title] = {
+                "authors": authors,
+                "year": year,
+                "abstract": abstract
+            }
 
     papers = [
-        PaperInfo(title=title, chunk_count=count)
+        PaperInfo(
+            title=title, 
+            chunk_count=count,
+            authors=paper_meta.get(title, {}).get("authors", []),
+            year=paper_meta.get(title, {}).get("year"),
+            abstract=paper_meta.get(title, {}).get("abstract")
+        )
         for title, count
         in sorted(counts.items())
     ]

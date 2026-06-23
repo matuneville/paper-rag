@@ -84,26 +84,14 @@ with st.sidebar:
         type=["pdf"],
         label_visibility="collapsed",
     )
-    paper_title_input = st.text_input(
-        "Paper title (optional)",
-        placeholder="Leave blank to use filename",
-        label_visibility="collapsed",
-    )
-
     if st.button("⬆ Ingest PDF", use_container_width=True):
         if not uploaded_file:
             st.warning("Select a PDF first.")
         else:
-            # Default title = filename without extension
-            filename_stem = Path(uploaded_file.name).stem
-            effective_title = paper_title_input.strip() or filename_stem
-            if not paper_title_input.strip():
-                st.info(f"No title provided — using **{filename_stem}** as title.")
             with st.spinner("Ingesting…"):
                 data, err = api_client.upload_paper(
                     filename=uploaded_file.name,
                     content=uploaded_file.getvalue(),
-                    paper_title=effective_title,
                 )
             if err:
                 if "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
@@ -144,13 +132,20 @@ with st.sidebar:
         for paper in papers:
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(
-                    f'<div class="paper-pill">'
-                    f'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{paper["title"]}</span>'
-                    f'<span class="chunk-badge">{paper["chunk_count"]}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                with st.expander(f"📄 {paper['title']}"):
+                    authors = paper.get("authors")
+                    authors_str = ", ".join(authors) if authors else "Unknown"
+                    st.markdown(f"**Authors:** {authors_str}")
+                    
+                    year = paper.get("year") or "Unknown"
+                    st.markdown(f"**Year:** {year}")
+                    
+                    abstract = paper.get("abstract") or "No abstract available."
+                    if len(abstract) > 200:
+                        abstract = abstract[:200] + "..."
+                    st.markdown(f"**Abstract:** {abstract}")
+
+                    st.markdown(f"**Chunks:** {paper['chunk_count']}")
             with col2:
                 if st.button("🗑", key=f"del_{paper['title']}", help=f"Delete {paper['title']}"):
                     _, err = api_client.delete_paper(paper["title"])

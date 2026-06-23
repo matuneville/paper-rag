@@ -36,9 +36,19 @@ class ChatResponse(BaseModel):
 # Papers
 # ---------------------------------------------------------------------------
 
+class PaperMetadata(BaseModel):
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    abstract: str | None = None
+
+
 class PaperInfo(BaseModel):
     title: str
     chunk_count: int
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    abstract: str | None = None
 
 
 class PaperListResponse(BaseModel):
@@ -52,6 +62,7 @@ class UploadResponse(BaseModel):
     pages: int
     chunks: int
     ingested_at: str
+    metadata: PaperMetadata
 
 
 class DeleteResponse(BaseModel):

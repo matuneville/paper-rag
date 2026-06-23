@@ -85,12 +85,15 @@ def list_papers() -> tuple[dict, str | None]:
     return _get("/api/papers")
 
 
-def upload_paper(filename: str, content: bytes, paper_title: str) -> tuple[dict, str | None]:
+def upload_paper(filename: str, content: bytes, paper_title: str | None = None) -> tuple[dict, str | None]:
     """POST /api/papers/upload"""
+    data = {}
+    if paper_title is not None:
+        data["paper_title"] = paper_title
     return _post(
         "/api/papers/upload",
         files={"file": (filename, content, "application/pdf")},
-        data={"paper_title": paper_title},
+        data=data,
     )
 
 

@@ -103,6 +103,12 @@ def test_upload_success():
         "pages": 5,
         "chunks": 20,
         "ingested_at": "2026-01-01T00:00:00+00:00",
+        "metadata": {
+            "title": "Test Paper",
+            "authors": ["John Doe"],
+            "year": 2026,
+            "abstract": "Test abstract"
+        }
     }
     # Vectorstore returns no existing IDs → paper not yet indexed.
     # Path.write_bytes mocked so the executor thread-pool write is a no-op.
@@ -125,7 +131,8 @@ def test_upload_success():
 
 def test_upload_duplicate_rejected():
     """Uploading a paper_title that already exists → 409 Conflict."""
-    with patch("app.api.routes.get_vectorstore", return_value=_mock_vectorstore(ids=["id1", "id2"])):
+    # We mock _ingestion.ingest_pdf to raise the duplicate exception
+    with patch("app.api.routes._ingestion.ingest_pdf", new=AsyncMock(side_effect=ValueError("'Existing Paper' already indexed."))):
         r = client.post(
             "/api/papers/upload",
             files={"file": ("test.pdf", b"%PDF-1.4 fake", "application/pdf")},
