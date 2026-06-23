@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # --- Models ---
     embedding_model: str = "models/gemini-embedding-001"
-    llm_model: str = "gemini-2.5-flash-lite"
+    llm_model: str = "gemini-3.5-flash-lite"
 
     # --- Chunking ---
     chunk_size: int = 1000
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # --- Retrieval ---
     retrieval_k: int = 4
-    excerpt_length: int = 300
+    excerpt_length: int = 500
 
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
 
